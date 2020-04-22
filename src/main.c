@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 
 #include "mem.c"
@@ -75,6 +74,28 @@ REST_CALLBACK(post_authenticate) {
 }
 
 int main(int argc, char **argv) {
+    if ( argc < 5 ) {
+        fprintf(stderr, "-port und -ip müssen als parameter übergeben werden.\n");
+        exit(1);
+    }
+
+    char *ip = NULL;
+    uint16_t port = 0;
+    for ( int i = 1; i < argc; ++i ) {
+        if ( is_equal(argv[i], "-ip", 3) ) {
+            ip = argv[++i];
+            continue;
+        } else if ( is_equal(argv[i], "-port", 5) ) {
+            char *p = argv[i++];
+            while (*p) {
+                port *= 10;
+                port += *p - '0';
+                p++;
+            }
+            continue;
+        }
+    }
+
     temp_arena = mem_arena_new(1024);
     perm_arena = mem_arena_new(1024);
 
@@ -91,7 +112,7 @@ int main(int argc, char **argv) {
     rest_get(api, "/orga/:id", get_orga);
     rest_post(api, "/auth/authenticate", post_authenticate);
 
-    rest_start(api, "127.0.0.1", 3000);
+    rest_start(api, ip, port);
 
     return 0;
 }

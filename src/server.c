@@ -160,7 +160,6 @@ server_start(Server *server, char *ip, uint16_t port) {
     }
 
     if (server->socket == INVALID_SOCKET) {
-        // printf("fehler: %d\n", WSAGetLastError());
         WSACleanup();
 
         return (Server_Response){ false, "fehler" };

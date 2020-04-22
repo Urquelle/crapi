@@ -79,12 +79,12 @@ int main(int argc, char **argv) {
     perm_arena = mem_arena_new(1024);
 
     Rest_Api *api = &(Rest_Api){0};
-    api->db = MEM_STRUCT(perm_arena, Db);
+    rest_init(api, perm_arena, temp_arena, MEM_STRUCT(perm_arena, Db));
     db_init(api->db, NULL, "root", DB_PASSWD, "grimoire");
 
-    db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?", temp_arena);
-    db_stmt_create(api->db, "orga/structs", "SELECT id, name FROM structure WHERE orga_id = ?", temp_arena);
-    db_stmt_create(api->db, "auth/authenticate", "SELECT * FROM user WHERE (username = ? OR email = ?) AND password = ?", temp_arena);
+    db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?", perm_arena);
+    db_stmt_create(api->db, "orga/structs", "SELECT id, name FROM structure WHERE orga_id = ?", perm_arena);
+    db_stmt_create(api->db, "auth/authenticate", "SELECT * FROM user WHERE (username = ? OR email = ?) AND password = ?", perm_arena);
 
     rest_get(api, "/orgas", get_orgas);
     rest_get(api, "/orga/:id/structures", get_orga_structs);

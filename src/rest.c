@@ -11,10 +11,19 @@ typedef struct {
 enum { REST_MAX_ROUTES = 50 };
 struct Rest_Api {
     Server *server;
+    Mem_Arena *temp_arena;
+    Mem_Arena *perm_arena;
     Db *db;
     Rest_Route routes[REST_MAX_ROUTES];
     size_t num_routes;
 };
+
+void
+rest_init(Rest_Api *api, Mem_Arena *perm_arena, Mem_Arena *temp_arena, Db *db) {
+    api->perm_arena = perm_arena;
+    api->temp_arena = temp_arena;
+    api->db = db;
+}
 
 bool rest_pattern_match(Rest_Route *route, char *url) {
     bool result = true;
@@ -150,5 +159,6 @@ void rest_start(Rest_Api *api, char *ip, uint16_t port) {
         }
 
         http_server_send_response( request, response, response->content );
+        mem_reset(api->temp_arena);
     }
 }

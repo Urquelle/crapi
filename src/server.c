@@ -86,11 +86,11 @@ typedef struct {
 } Server_Response;
 
 enum Mime_Type {
-    MT_UNKNOWN,
-    MT_APPLICATION_JSON,
-    MT_TEXT_HTML,
-    MT_TEXT_CSS,
-    MT_TEXT_JAVASCRIPT,
+    MIME_UNKNOWN,
+    MIME_APPLICATION_JSON,
+    MIME_TEXT_HTML,
+    MIME_TEXT_CSS,
+    MIME_TEXT_JAVASCRIPT,
 };
 typedef struct {
     char header[MAX_HTTP_HEADER_SIZE];
@@ -278,19 +278,19 @@ server_send_udp_response( Server* server, Client* client, char* message, uint32_
 char *
 http_mime_type(Http_Response *res) {
     switch ( res->mime_type ) {
-        case MT_TEXT_HTML: {
+        case MIME_TEXT_HTML: {
             return "text/html";
         } break;
 
-        case MT_TEXT_CSS: {
+        case MIME_TEXT_CSS: {
             return "text/css";
         } break;
 
-        case MT_TEXT_JAVASCRIPT: {
+        case MIME_TEXT_JAVASCRIPT: {
             return "text/javascript";
         } break;
 
-        case MT_APPLICATION_JSON: {
+        case MIME_APPLICATION_JSON: {
             return "application/json";
         } break;
 
@@ -508,6 +508,18 @@ http_server_send_response( Http_Request *request, Http_Response *response, char 
 char *
 http_param(Http_Request *req, char *key) {
     char *result = (char *)map_get(&req->params, str_intern(key));
+
+    return result;
+}
+
+int
+http_param_int(Http_Request *req, char *key) {
+    char *value = http_param(req, key);
+    int result = 0;
+
+    if ( value ) {
+        result = string_to_int(value);
+    }
 
     return result;
 }

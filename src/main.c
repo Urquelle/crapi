@@ -17,44 +17,40 @@
 
 #include ".credentials.ini"
 
-REST_CALLBACK(get_structures_for_orga) {
+REST_CALLBACK(get_orga_structs) {
     assert(api->db);
 
-    char *id = http_param(req, "id");
-    assert(id);
-#if 1
-    char query[250];
-    sprintf(query, "SELECT * FROM structure WHERE orga_id = %s\0", id);
-    Db_Result result = db_query(api->db, query, string_len(query));
-#else
-    Db_Stmt *stmt = db_stmt_get(api->db, "structs");
-    db_stmt_param_set(stmt, 0, MYSQL_TYPE_LONG, id);
-    db_stmt_exec(stmt);
-#endif
+    Db_Param params = db_params(1);
+    db_param_set(&params, 0, MYSQL_TYPE_LONG, &(int){ http_param_int(req, "id") });
+
+    Db_Stmt *stmt = db_stmt_get(api->db, "orga/structs");
+    Db_Result result = db_stmt_exec(stmt, &params);
 
     res->content = result.data;
+    res->mime_type = MIME_APPLICATION_JSON;
 }
 
 REST_CALLBACK(get_orgas) {
     assert(api->db);
 
     char *query = "SELECT * FROM orga";
-    Db_Result result = db_query(api->db, query, string_len(query));
+    Db_Result result = db_query(api->db, query);
 
     res->content = result.data;
+    res->mime_type = MIME_APPLICATION_JSON;
 }
 
 REST_CALLBACK(get_orga) {
     assert(api->db);
 
-    char query[150];
-    char *id = http_param(req, "id");
-    assert(id);
-    sprintf(query, "SELECT * FROM orga WHERE id = %s\0", id);
-    Db_Result result = db_query(api->db, query, string_len(query));
+    Db_Param params = db_params(1);
+    db_param_set(&params, 0, MYSQL_TYPE_LONG, &(int){ http_param_int(req, "id") });
 
-    res->mime_type = MT_APPLICATION_JSON;
+    Db_Stmt *stmt = db_stmt_get(api->db, "orga");
+    Db_Result result = db_stmt_exec(stmt, &params);
+
     res->content = result.data;
+    res->mime_type = MIME_APPLICATION_JSON;
 }
 
 REST_CALLBACK(post_authenticate) {
@@ -69,16 +65,15 @@ REST_CALLBACK(post_authenticate) {
 }
 
 int main(int argc, char **argv) {
-    Db *db = db_init(NULL, "root", DB_PASSWD, "grimoire");
-
-    db_stmt_create(db, "structs", "SELECT * FROM structure WHERE orga_id = ?", 1);
-    db_stmt_create(db, "authenticate", "SELECT * FROM user WHERE (username = ? OR email = ?) AND password = ?", 3);
-
     Rest_Api *api = &(Rest_Api){0};
-    api->db = db;
+    api->db = db_init(NULL, "root", DB_PASSWD, "grimoire");
+
+    db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?");
+    db_stmt_create(api->db, "orga/structs", "SELECT id, name FROM structure WHERE orga_id = ?");
+    db_stmt_create(api->db, "auth/authenticate", "SELECT * FROM user WHERE (username = ? OR email = ?) AND password = ?");
 
     rest_get(api, "/orgas", get_orgas);
-    rest_get(api, "/orga/:id/structures", get_structures_for_orga);
+    rest_get(api, "/orga/:id/structures", get_orga_structs);
     rest_get(api, "/orga/:id", get_orga);
     rest_post(api, "/auth/authenticate", post_authenticate);
 

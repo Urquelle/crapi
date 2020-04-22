@@ -13,9 +13,12 @@ typedef struct {
 
 typedef struct {
     void *stmt;
-    void *params;
-    size_t num_params;
 } Db_Stmt;
+
+typedef struct {
+    MYSQL_BIND *elems;
+    size_t num_elems;
+} Db_Param;
 
 typedef struct {
     int32_t success;
@@ -23,12 +26,10 @@ typedef struct {
 } Db_Result;
 
 Db_Stmt *
-db_stmt_new(void *stmt, void *params, size_t num_params) {
+db_stmt_new(void *stmt) {
     Db_Stmt *result = (Db_Stmt *)xmalloc(sizeof(Db_Stmt));
 
     result->stmt = stmt;
-    result->params = params;
-    result->num_params = num_params;
 
     return result;
 }
@@ -48,16 +49,20 @@ db_init(char *host, char *user, char *passwd, char *db) {
     Db *result = (Db *)xmalloc(sizeof(Db));
 
     result->handle = mysql;
+
     result->stmts.cap = 0;
+    result->stmts.vals = 0;
+    result->stmts.keys = 0;
+    result->stmts.len = 0;
 
     return result;
 }
 
 Db_Result
-db_query(Db *db, char *query, size_t len) {
+db_query(Db *db, char *query) {
     Db_Result result = {0};
 
-    if ( mysql_real_query(db->handle, query, (unsigned long)len) ) {
+    if ( mysql_real_query(db->handle, query, string_len(query)) ) {
         return result;
     }
 
@@ -98,42 +103,116 @@ db_query(Db *db, char *query, size_t len) {
     return result;
 }
 
+Db_Param
+db_params(size_t num_elems) {
+    Db_Param result = {0};
+
+    result.elems = (MYSQL_BIND *)xcalloc(num_elems, sizeof(MYSQL_BIND));
+    result.num_elems = num_elems;
+
+    return result;
+}
+
+void
+db_param_set(Db_Param *params, size_t idx, int type, void *data) {
+    params->elems[idx].buffer_type = type;
+    params->elems[idx].buffer = (void *)data;
+    params->elems[idx].is_null = 0;
+    params->elems[idx].length = 0;
+}
+
 bool
-db_stmt_create(Db *db, char *key, char *query, int num_params) {
+db_stmt_create(Db *db, char *key, char *query) {
     MYSQL_STMT *stmt = mysql_stmt_init(db->handle);
-    MYSQL_BIND *params = (MYSQL_BIND *)xcalloc(num_params, sizeof(MYSQL_BIND));
 
     if ( mysql_stmt_prepare(stmt, query, string_len(query)) ) {
         return false;
     }
 
-    Db_Stmt *result = db_stmt_new(stmt, params, num_params);
-    map_push(&db->stmts, key, result);
+    Db_Stmt *result = db_stmt_new(stmt);
+    map_push(&db->stmts, str_intern(key), result);
 
     return true;
 }
 
 Db_Stmt *
 db_stmt_get(Db *db, char *key) {
-    Db_Stmt *result = map_get(&db->stmts, key);
+    Db_Stmt *result = map_get(&db->stmts, str_intern(key));
 
     return result;
 }
 
-void
-db_stmt_param_set(Db_Stmt *stmt, int idx, uint32_t type, void *value) {
-    MYSQL_BIND *param = (MYSQL_BIND *)stmt->params + idx;
-    param->buffer_type = type;
-    param->buffer = value;
-    param->is_null = 0;
-    param->length = 0;
+char global_buf[1000];
+char *
+db_bind_to_string(MYSQL_BIND *bind) {
+    switch ( bind->buffer_type ) {
+        case MYSQL_TYPE_LONG: {
+            sprintf(global_buf, "%d", *(int *)bind->buffer);
+
+            return global_buf;
+        } break;
+
+        case MYSQL_TYPE_VAR_STRING: {
+            return (char *)bind->buffer;
+        }
+
+        default: {
+            assert(0);
+            return "";
+        } break;
+    }
 }
 
-bool
-db_stmt_exec(Db_Stmt *stmt) {
+Db_Result
+db_stmt_exec(Db_Stmt *stmt, Db_Param *params) {
+    Db_Result result = {0};
+
+    mysql_stmt_bind_param(stmt->stmt, params->elems);
+
     if ( mysql_stmt_execute(stmt->stmt) ) {
-        return false;
+        printf("Db Fehler: %s", mysql_stmt_error(stmt->stmt));
+        return result;
     }
 
-    return true;
+    MYSQL_BIND *bind = 0;
+    MYSQL_RES *mysql_result = mysql_stmt_result_metadata(stmt->stmt);
+    uint32_t num_fields = mysql_num_fields(mysql_result);
+    MYSQL_FIELD **fields = (MYSQL_FIELD **)xmalloc(sizeof(MYSQL_FIELD *)*num_fields);
+
+    if ( mysql_result ) {
+        bind = (MYSQL_BIND *)xcalloc(num_fields, sizeof(MYSQL_BIND));
+
+        for ( uint32_t i = 0; i < num_fields; ++i ) {
+            MYSQL_FIELD *field = mysql_fetch_field(mysql_result);
+            fields[i] = field;
+
+            bind[i].buffer_type = field->type;
+            bind[i].buffer_length = field->length;
+            bind[i].buffer = xmalloc(field->length);
+        }
+    }
+
+    mysql_stmt_bind_result(stmt->stmt, bind);
+    mysql_stmt_store_result(stmt->stmt);
+
+    char buf[1000];
+    sprintf(buf, "[");
+    bool first = true;
+    while ( !mysql_stmt_fetch(stmt->stmt) ) {
+        sprintf(buf, "%s%s{", buf, (first) ? "": ",");
+        for ( uint32_t i = 0; i < num_fields; ++i ) {
+            mysql_stmt_fetch_column(stmt->stmt, bind, i, 0);
+            sprintf(buf, "%s%s\"%s\": \"%s\"", buf, (i == 0) ? "" : ", ", fields[i]->name, db_bind_to_string(&bind[i]));
+        }
+        sprintf(buf, "%s}", buf);
+        first = false;
+    }
+    sprintf(buf, "%s]", buf);
+
+    size_t buf_len = string_len(buf);
+
+    result.data = (char *)xmalloc(buf_len);
+    string_copy(buf, result.data, buf_len);
+
+    return result;
 }

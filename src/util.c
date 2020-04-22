@@ -201,6 +201,19 @@ string_copy( char *source, char *dest, uint64_t len ) {
     dest[len] = '\0';
 }
 
+int
+string_to_int(char *str) {
+    int result = 0;
+
+    while ( *str ) {
+        result *= 10;
+        result += *str - '0';
+        str++;
+    }
+
+    return result;
+}
+
 typedef struct Str_Intern Str_Intern;
 struct Str_Intern {
     size_t   length;

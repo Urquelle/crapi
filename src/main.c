@@ -10,6 +10,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "mem.c"
 #include "util.c"
 #include "db.c"
 #include "server.c"
@@ -17,16 +18,19 @@
 
 #include ".credentials.ini"
 
+static Mem_Arena *temp_arena;
+static Mem_Arena *perm_arena;
+
 REST_CALLBACK(get_orga_structs) {
     assert(api->db);
 
-    Db_Param params = db_params(1);
+    Db_Param params = db_params(1, temp_arena);
     db_param_set(&params, 0, MYSQL_TYPE_LONG, &(int){ http_param_int(req, "id") });
 
     Db_Stmt *stmt = db_stmt_get(api->db, "orga/structs");
-    Db_Result result = db_stmt_exec(stmt, &params);
+    Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    res->content = result.data;
+    res->content = db_json(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
@@ -34,50 +38,60 @@ REST_CALLBACK(get_orgas) {
     assert(api->db);
 
     char *query = "SELECT * FROM orga";
-    Db_Result result = db_query(api->db, query);
+    Db_Result result = db_query(api->db, query, temp_arena);
 
-    res->content = result.data;
+    res->content = db_json(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
 REST_CALLBACK(get_orga) {
     assert(api->db);
 
-    Db_Param params = db_params(1);
+    Db_Param params = db_params(1, temp_arena);
     db_param_set(&params, 0, MYSQL_TYPE_LONG, &(int){ http_param_int(req, "id") });
 
     Db_Stmt *stmt = db_stmt_get(api->db, "orga");
-    Db_Result result = db_stmt_exec(stmt, &params);
+    Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    res->content = result.data;
+    res->content = db_json(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
 REST_CALLBACK(post_authenticate) {
     assert(api->db);
 
-    char *username = http_param(req, "username");
-    char *password = http_param(req, "password");
+    Db_Param params = db_params(2, temp_arena);
+    db_param_set(&params, 0, MYSQL_TYPE_VAR_STRING, http_param(req, "username"));
+    db_param_set(&params, 1, MYSQL_TYPE_VAR_STRING, http_param(req, "password"));
 
-    char query[250];
-    sprintf(query, "SELECT * FROM user WHERE (username = '%s' OR email = '%s') AND password = '%s'",
-            username, username, password);
+    Db_Stmt *stmt = db_stmt_get(api->db, "auth/authenticate");
+    Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
+
+    if ( result.num_rows > 0 ) {
+        res->content = "erfolgreich angemeldet";
+    } else {
+        res->content = "benutzer konnte nicht angemeldet werden";
+    }
 }
 
 int main(int argc, char **argv) {
-    Rest_Api *api = &(Rest_Api){0};
-    api->db = db_init(NULL, "root", DB_PASSWD, "grimoire");
+    temp_arena = mem_arena_new(1024);
+    perm_arena = mem_arena_new(1024);
 
-    db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?");
-    db_stmt_create(api->db, "orga/structs", "SELECT id, name FROM structure WHERE orga_id = ?");
-    db_stmt_create(api->db, "auth/authenticate", "SELECT * FROM user WHERE (username = ? OR email = ?) AND password = ?");
+    Rest_Api *api = &(Rest_Api){0};
+    api->db = MEM_STRUCT(perm_arena, Db);
+    db_init(api->db, NULL, "root", DB_PASSWD, "grimoire");
+
+    db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?", temp_arena);
+    db_stmt_create(api->db, "orga/structs", "SELECT id, name FROM structure WHERE orga_id = ?", temp_arena);
+    db_stmt_create(api->db, "auth/authenticate", "SELECT * FROM user WHERE (username = ? OR email = ?) AND password = ?", temp_arena);
 
     rest_get(api, "/orgas", get_orgas);
     rest_get(api, "/orga/:id/structures", get_orga_structs);
     rest_get(api, "/orga/:id", get_orga);
     rest_post(api, "/auth/authenticate", post_authenticate);
 
-    rest_start(api, "127.0.0.1", 3300);
+    rest_start(api, "127.0.0.1", 3000);
 
     return 0;
 }

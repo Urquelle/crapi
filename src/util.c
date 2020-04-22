@@ -251,3 +251,19 @@ static char *
 str_intern(char *str) {
     return str_intern_range(str, str + string_len(str));
 }
+
+char *
+strf(Mem_Arena *arena, char *fmt, ...) {
+    va_list args = NULL;
+    va_start(args, fmt);
+    int size = 1 + vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    char *str = MEM_SIZE(arena, size);
+
+    va_start(args, fmt);
+    vsnprintf(str, size, fmt, args);
+    va_end(args);
+
+    return str;
+}

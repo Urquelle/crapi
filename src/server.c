@@ -92,13 +92,14 @@ enum Mime_Type {
     MIME_TEXT_JAVASCRIPT,
 };
 typedef struct {
-    char header[MAX_HTTP_HEADER_SIZE];
+    char *header;
     char* content;
     uint32_t code;
     uint32_t mime_type;
 } Http_Response;
 
-enum Http_Request_Kind {
+enum Http_Method {
+    Request_Unknown,
     Request_Get,
     Request_Head,
     Request_Post,
@@ -108,7 +109,7 @@ enum Http_Request_Kind {
     Request_Options,
     Request_Trace,
     Request_Patch,
-    Request_Unknown,
+    Request_Any,
 };
 
 typedef struct {
@@ -121,7 +122,7 @@ typedef struct {
 } Http_Header;
 
 typedef struct {
-    uint32_t kind;
+    uint32_t method;
     SOCKET   client_socket;
     char     url[MAX_URL_LENGTH];
     Http_Header header;
@@ -273,30 +274,12 @@ server_send_udp_response( Server* server, Client* client, char* message, uint32_
     return true;
 }
 
-char *
-http_mime_type(Http_Response *res) {
-    switch ( res->mime_type ) {
-        case MIME_TEXT_HTML: {
-            return "text/html";
-        } break;
-
-        case MIME_TEXT_CSS: {
-            return "text/css";
-        } break;
-
-        case MIME_TEXT_JAVASCRIPT: {
-            return "text/javascript";
-        } break;
-
-        case MIME_APPLICATION_JSON: {
-            return "application/json";
-        } break;
-
-        default: {
-            return "html/text";
-        } break;
-    }
-}
+char *mime_type[] = {
+    [MIME_TEXT_HTML]        = "text/html",
+    [MIME_TEXT_CSS]         = "text/css",
+    [MIME_TEXT_JAVASCRIPT]  = "text/javascript",
+    [MIME_APPLICATION_JSON] = "application/json",
+};
 
 void
 parse_key_value( char **c, char *key, char *value ) {
@@ -358,25 +341,25 @@ http_request_parse( Http_Request *request, char *content ) {
     method[index] = '\0';
 
     if ( strncmp( method, "GET", 3 ) == 0 ) {
-        request->kind = Request_Get;
+        request->method = Request_Get;
     } else if ( is_equal( method, "POST", 4 ) ) {
-        request->kind = Request_Post;
+        request->method = Request_Post;
     } else if ( is_equal( method, "HEAD", 4 ) ) {
-        request->kind = Request_Head;
+        request->method = Request_Head;
     } else if ( is_equal( method, "PUT", 3 ) ) {
-        request->kind = Request_Put;
+        request->method = Request_Put;
     } else if ( is_equal( method, "DELETE", 6 ) ) {
-        request->kind = Request_Delete;
+        request->method = Request_Delete;
     } else if ( is_equal( method, "CONNECT", 7 ) ) {
-        request->kind = Request_Connect;
+        request->method = Request_Connect;
     } else if ( is_equal( method, "OPTIONS", 7 ) ) {
-        request->kind = Request_Options;
+        request->method = Request_Options;
     } else if ( is_equal( method, "TRACE", 5 ) ) {
-        request->kind = Request_Trace;
+        request->method = Request_Trace;
     } else if ( is_equal( method, "PATCH", 5 ) ) {
-        request->kind = Request_Patch;
+        request->method = Request_Patch;
     } else {
-        request->kind = Request_Unknown;
+        request->method = Request_Unknown;
     }
 
     // parse requested resource

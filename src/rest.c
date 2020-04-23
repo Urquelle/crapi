@@ -3,10 +3,21 @@ typedef struct Rest_Api Rest_Api;
 typedef REST_CALLBACK(Rest_Callback);
 
 typedef struct {
-    uint32_t kind;
+    uint32_t method;
     char *pattern;
     Rest_Callback *func;
 } Rest_Route;
+
+Rest_Route *
+rest_route(uint32_t method, char *pattern, Rest_Callback func, Mem_Arena *arena) {
+    Rest_Route *result = MEM_STRUCT(arena, Rest_Route);
+
+    result->method = method;
+    result->pattern = pattern;
+    result->func = func;
+
+    return result;
+}
 
 enum { REST_MAX_ROUTES = 50 };
 struct Rest_Api {
@@ -14,8 +25,12 @@ struct Rest_Api {
     Mem_Arena *temp_arena;
     Mem_Arena *perm_arena;
     Db *db;
-    Rest_Route routes[REST_MAX_ROUTES];
+
+    Rest_Route *routes[REST_MAX_ROUTES];
     size_t num_routes;
+
+    Rest_Route *uses[REST_MAX_ROUTES];
+    size_t num_uses;
 };
 
 void
@@ -37,11 +52,11 @@ bool rest_pattern_match(Rest_Route *route, char *url) {
         if ( pattern[0] == ':' ) {
             pattern++;
 
-            while ( pattern[0] && pattern[0] != '/' ) {
+            while ( pattern[0] && pattern[0] != '/' && pattern[0] != '-' ) {
                 pattern++;
             }
 
-            while ( url[0] && url[0] != '/' ) {
+            while ( url[0] && url[0] != '/' && url[0] != '-' ) {
                 url++;
             }
         } else if ( pattern[0] != url[0] ) {
@@ -65,7 +80,29 @@ bool rest_pattern_match(Rest_Route *route, char *url) {
     return result;
 }
 
-void rest_parse_params(Rest_Route *route, Http_Request *req) {
+bool
+rest_pattern_startswith(Rest_Route *route, char *url) {
+    bool result = false;
+
+    char *pattern = route->pattern;
+    while ( *pattern && *url ) {
+        if ( *pattern != *url ) {
+            result = false;
+            break;
+        }
+
+        pattern++;
+        url++;
+    }
+
+    if ( *pattern != '\0' ) {
+        result = false;
+    }
+
+    return result;
+}
+
+void rest_parse_params(Rest_Route *route, Http_Request *req, Mem_Arena *arena) {
     char *pattern = route->pattern;
     char *url = req->url;
 
@@ -78,23 +115,23 @@ void rest_parse_params(Rest_Route *route, Http_Request *req) {
             pattern++;
 
             char *key_ptr = pattern;
-            while ( pattern[0] && pattern[0] != '/' ) {
+            while ( pattern[0] && pattern[0] != '/' && pattern[0] != '-' ) {
                 pattern++;
             }
 
             size_t key_len = pattern - key_ptr;
 
             char *val_ptr = url;
-            while ( url[0] && url[0] != '/' ) {
+            while ( url[0] && url[0] != '/' && url[0] != '-' ) {
                 url++;
             }
 
             size_t val_len = url - val_ptr;
 
-            char *key = (char *)xmalloc(key_len + 1);
+            char *key = (char *)MEM_SIZE(arena, key_len + 1);
             string_copy(key_ptr, key, key_len);
 
-            char *val = (char *)xmalloc(val_len + 1);
+            char *val = (char *)MEM_SIZE(arena, val_len + 1);
             string_copy(val_ptr, val, val_len);
 
             map_push(&req->params, str_intern(key), val);
@@ -110,16 +147,28 @@ void rest_parse_params(Rest_Route *route, Http_Request *req) {
     }
 }
 
+void rest_use(Rest_Api *api, char *pattern, Rest_Callback *func) {
+    assert(api->num_routes < REST_MAX_ROUTES);
+
+    api->uses[api->num_uses++] = rest_route(Request_Any, pattern, func, api->perm_arena);
+}
+
+void rest_any(Rest_Api *api, char *pattern, Rest_Callback *func) {
+    assert(api->num_routes < REST_MAX_ROUTES);
+
+    api->routes[api->num_routes++] = rest_route(Request_Any, pattern, func, api->perm_arena);
+}
+
 void rest_get(Rest_Api *api, char *pattern, Rest_Callback *func) {
     assert(api->num_routes < REST_MAX_ROUTES);
 
-    api->routes[api->num_routes++] = (Rest_Route){ Request_Get, pattern, func};
+    api->routes[api->num_routes++] = rest_route(Request_Get, pattern, func, api->perm_arena);
 }
 
 void rest_post(Rest_Api *api, char *pattern, Rest_Callback *func) {
     assert(api->num_routes < REST_MAX_ROUTES);
 
-    api->routes[api->num_routes++] = (Rest_Route){ Request_Post, pattern, func};
+    api->routes[api->num_routes++] = rest_route(Request_Post, pattern, func, api->perm_arena);
 }
 
 void rest_start(Rest_Api *api, char *ip, uint16_t port) {
@@ -137,28 +186,37 @@ void rest_start(Rest_Api *api, char *ip, uint16_t port) {
     while ( api->server->is_running ) {
         http_request_accept( request, api->server->socket );
 
+        for ( int i = 0; i < api->num_uses; ++i ) {
+            Rest_Route *use_route = api->uses[i];
+
+            if ( rest_pattern_startswith(use_route, request->url) ) {
+                rest_parse_params(use_route, request, api->perm_arena);
+                use_route->func(api, request, response);
+            }
+        }
+
         Rest_Route *route = NULL;
         for ( uint32_t i = 0; i < api->num_routes; ++i ) {
-            Rest_Route r = api->routes[i];
+            Rest_Route *r = api->routes[i];
 
-            if ( r.kind != request->kind ) {
+            if ( r->method != request->method && r->method != Request_Any ) {
                 continue;
             }
 
-            if ( rest_pattern_match(&r, request->url) ) {
-                route = &r;
+            if ( rest_pattern_match(r, request->url) ) {
+                route = r;
                 break;
             }
         }
 
         if ( route ) {
-            rest_parse_params(route, request);
+            rest_parse_params(route, request, api->perm_arena);
             route->func(api, request, response);
         } else {
             response->content = "404 - Seite nicht gefunden";
         }
 
-        http_server_send_response( request, response, response->content );
+        http_server_send_response( request, response, response->content, api->temp_arena );
         mem_reset(api->temp_arena);
     }
 }

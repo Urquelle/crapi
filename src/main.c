@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
             ip = argv[++i];
             continue;
         } else if ( is_equal(argv[i], "-port", 5) ) {
-            char *p = argv[i++];
+            char *p = argv[++i];
             while (*p) {
                 port *= 10;
                 port += *p - '0';
@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
 
     Rest_Api *api = &(Rest_Api){0};
     rest_init(api, perm_arena, temp_arena, MEM_STRUCT(perm_arena, Db));
-    db_init(api->db, NULL, "root", DB_PASSWD, "grimoire");
+    db_init(api->db, NULL, DB_USER, DB_PASSWD, DB_NAME);
 
     db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?", perm_arena);
     db_stmt_create(api->db, "orga/structs", "SELECT id, name FROM structure WHERE orga_id = ?", perm_arena);

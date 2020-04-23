@@ -51,7 +51,6 @@ enum Http_Response_Code {
 };
 
 enum {
-    MAX_HTTP_HEADER_SIZE = 250,
     MAX_HTTP_VERSION_SIZE = 15,
     MAX_URL_LENGTH = 2000,
     MAX_HTTP_HOST_SIZE = 20,
@@ -489,14 +488,19 @@ http_request_accept( Http_Request *request, SOCKET listen_socket ) {
 }
 
 bool
-http_server_send_response( Http_Request *request, Http_Response *response, char *content ) {
+http_server_send_response(Http_Request *request, Http_Response *response,
+        char *content, Mem_Arena *arena)
+{
     size_t content_len = string_len( content );
 
-    sprintf_s(response->header, 250, "%s %d OK\nContent-length: %zd\nContent-type: %s\n\n",
-            request->header.http_version, response->code, content_len, http_mime_type(response));
+    response->header = strf(arena, "%s %d OK\nContent-length: %zd\nContent-type: %s\n\n",
+            request->header.http_version,
+            response->code,
+            content_len,
+            mime_type[response->mime_type]);
 
     size_t response_len = string_len(response->header) + content_len + 1;
-    char *response_content = (char *)xmalloc(response_len);
+    char *response_content = (char *)MEM_SIZE(arena, response_len);
     string_concat(response->header, content, response_content);
 
     bool result = server_send_tcp_response(request->client_socket, response_content, (int)response_len);

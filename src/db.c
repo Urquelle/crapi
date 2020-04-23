@@ -232,7 +232,8 @@ db_stmt_exec(Db_Stmt *stmt, Db_Param *params, Mem_Arena *arena) {
     unsigned long len = 0;
 
     if ( mysql_result ) {
-        bind = (MYSQL_BIND *)xcalloc(num_fields, sizeof(MYSQL_BIND));
+        bind = (MYSQL_BIND *)MEM_SIZE(arena, num_fields*sizeof(MYSQL_BIND));
+        ZERO_ARRAY(num_fields, bind);
 
         for ( uint32_t i = 0; i < num_fields; ++i ) {
             MYSQL_FIELD *field = mysql_fetch_field(mysql_result);

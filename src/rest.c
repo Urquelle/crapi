@@ -172,7 +172,8 @@ void rest_post(Rest_Api *api, char *pattern, Rest_Callback *func) {
 }
 
 void rest_start(Rest_Api *api, char *ip, uint16_t port) {
-    api->server = server_create(SERVER_TCP);
+    api->server = MEM_STRUCT(api->perm_arena, Server);
+    server_init(api->server, SERVER_TCP);
 
     Server_Response result = server_start(api->server, ip, port);
 
@@ -180,11 +181,11 @@ void rest_start(Rest_Api *api, char *ip, uint16_t port) {
         assert(!"server konnte nicht gestartet werden");
     }
 
-    Http_Request *request = &(Http_Request){0};
-    Http_Response *response = &(Http_Response){0};
-
     while ( api->server->is_running ) {
-        http_request_accept( request, api->server->socket );
+        Http_Request *request = &(Http_Request){0};
+        Http_Response *response = &(Http_Response){0};
+
+        http_request_accept( request, api->server->socket, api->temp_arena );
 
         for ( int i = 0; i < api->num_uses; ++i ) {
             Rest_Route *use_route = api->uses[i];
@@ -214,6 +215,7 @@ void rest_start(Rest_Api *api, char *ip, uint16_t port) {
             route->func(api, request, response);
         } else {
             response->content = "404 - Seite nicht gefunden";
+            response->code = Response_Not_Found;
         }
 
         http_server_send_response( request, response, response->content, api->temp_arena );

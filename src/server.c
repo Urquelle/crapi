@@ -130,13 +130,9 @@ typedef struct {
     Map params;
 } Http_Request;
 
-Server *
-server_create(uint32_t kind) {
-    Server *result = (Server *)xmalloc(sizeof(Server));
-
-    result->kind = kind;
-
-    return result;
+void
+server_init(Server *server, uint32_t kind) {
+    server->kind = kind;
 }
 
 Server_Response
@@ -190,7 +186,9 @@ server_start(Server *server, char *ip, uint16_t port) {
 }
 
 uint32_t
-wait_for_request( Server *server, Client *client, char* buffer, uint32_t buffer_length ) {
+wait_for_request( Server *server, Client *client, char* buffer,
+        uint32_t buffer_length, Mem_Arena *arena )
+{
     if ( server->kind == SERVER_TCP ) {
         client->socket = INVALID_SOCKET;
         client->socket = accept(server->socket, NULL, NULL);
@@ -227,8 +225,7 @@ wait_for_request( Server *server, Client *client, char* buffer, uint32_t buffer_
                 buffer[message_length] = 0;
 
                 client->port = sender_addr.sin_port;
-                client->ip = (char *)xmalloc(sizeof(char) * 15 );
-                client->ip = inet_ntoa (*(struct in_addr *) &sender_addr.sin_addr);
+                client->ip = strf(arena, "%s", inet_ntoa(*(struct in_addr *) &sender_addr.sin_addr));
 
                 return message_length;
             }
@@ -329,7 +326,7 @@ parse_post_data_key_value( char **c, char *key, char *value ) {
 }
 
 void
-http_request_parse( Http_Request *request, char *content ) {
+http_request_parse( Http_Request *request, char *content, Mem_Arena *arena ) {
     char *c = content;
     char method[10] = {0};
 
@@ -443,7 +440,9 @@ http_request_parse( Http_Request *request, char *content ) {
 }
 
 void
-http_request_accept( Http_Request *request, SOCKET listen_socket ) {
+http_request_accept( Http_Request *request, SOCKET listen_socket,
+        Mem_Arena *arena )
+{
     request->client_socket = INVALID_SOCKET;
     request->client_socket = accept(listen_socket, NULL, NULL);
 
@@ -455,19 +454,26 @@ http_request_accept( Http_Request *request, SOCKET listen_socket ) {
 #define DEFAULT_BUFLEN 1024
     char message[DEFAULT_BUFLEN];
     uint32_t result;
+    char *content = "";
 
-    result = recv(request->client_socket, message, DEFAULT_BUFLEN, 0);
+    do {
+        result = recv(request->client_socket, message, DEFAULT_BUFLEN, 0);
 
-    if (result > 0) {
-        uint32_t message_length = result / sizeof(char);
-        message[message_length] = 0;
-        http_request_parse( request, message );
-    } else if (result == 0) {
-        //
-    } else {
-        closesocket(request->client_socket);
-        WSACleanup();
-    }
+        if (result > 0) {
+            uint32_t message_length = result / sizeof(char);
+            message[message_length] = 0;
+            content = strf(arena, "%s%s", content, message);
+        } else if (result == 0) {
+            break;
+        } else {
+            closesocket(request->client_socket);
+            WSACleanup();
+
+            break;
+        }
+    } while ( result > 0 && result == DEFAULT_BUFLEN );
+
+    http_request_parse( request, content, arena );
 }
 
 bool

@@ -13,17 +13,20 @@ zero_size(size_t size, void *ptr) {
     }
 }
 
-typedef struct {
+typedef struct Mem_Page Mem_Page;
+struct Mem_Page {
     size_t size;
     size_t used;
+    Mem_Page *next;
     void *mem;
-} Mem_Page;
+};
 
 Mem_Page *mem_page_new(size_t size) {
     Mem_Page *result = (Mem_Page *)malloc(sizeof(Mem_Page));
 
     result->size = size;
     result->used = 0;
+    result->next = 0;
     result->mem  = malloc(size);
 
     return result;
@@ -34,43 +37,35 @@ void mem_page_free(Mem_Page *page) {
     free(page);
 }
 
+enum { MIN_PAGE_SIZE = 1024 };
 typedef struct {
-    size_t min_page_size;
-    size_t curr_page_num;
-
+    Mem_Page *curr_page;
     size_t num_pages;
-    size_t max_pages;
     Mem_Page **pages;
 } Mem_Arena;
 
-Mem_Arena *mem_arena_new(size_t min_page_size) {
+Mem_Arena *mem_arena_new() {
     Mem_Arena *result = (Mem_Arena *)malloc(sizeof(Mem_Arena));
 
-    result->min_page_size = min_page_size;
-    result->curr_page_num = 0;
-
-    result->num_pages     = 1;
-    result->max_pages     = 10;
-    result->pages         = (Mem_Page **)malloc(sizeof(Mem_Page *)*result->max_pages);
-    result->pages[0]      = mem_page_new(min_page_size);
+    result->num_pages = 1;
+    result->curr_page = (Mem_Page *)mem_page_new(MIN_PAGE_SIZE);
+    result->pages     = &result->curr_page;
 
     return result;
 }
 
 void *mem_alloc(Mem_Arena *arena, size_t size) {
-    Mem_Page *page = arena->pages[arena->curr_page_num];
+    Mem_Page *page = arena->curr_page;
 
     if ( (page->used + size) > page->size ) {
-        arena->curr_page_num += 1;
-        size_t new_size = ((arena->min_page_size < size) ? size : arena->min_page_size)*2;
-
-        if ( arena->num_pages >= arena->max_pages ) {
-            arena->max_pages = arena->max_pages*2;
-            arena->pages = (Mem_Page **)realloc(arena->pages, arena->max_pages);
+        if ( !page->next ) {
+            arena->num_pages += 1;
+            size_t new_size = MAX(MIN_PAGE_SIZE, size);
+            page->next = mem_page_new(new_size);
         }
 
-        arena->pages[arena->curr_page_num] = mem_page_new(new_size);
-        page = arena->pages[arena->curr_page_num];
+        arena->curr_page = page->next;
+        page = page->next;
     }
 
     void *result = (void *)((char *)page->mem + page->used);
@@ -80,11 +75,12 @@ void *mem_alloc(Mem_Arena *arena, size_t size) {
 }
 
 void mem_reset(Mem_Arena *arena) {
-    for ( int i = 0; i < arena->num_pages; ++i ) {
-        Mem_Page *page = arena->pages[i];
+    Mem_Page *page = arena->curr_page;
+    while ( page ) {
         page->used = 0;
+        page = page->next;
     }
 
-    arena->curr_page_num = 0;
+    arena->curr_page = *arena->pages;
 }
 

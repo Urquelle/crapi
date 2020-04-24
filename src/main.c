@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "common.c"
 #include "mem.c"
 #include "util.c"
 #include "db.c"
@@ -96,8 +97,8 @@ int main(int argc, char **argv) {
         }
     }
 
-    temp_arena = mem_arena_new(1024);
-    perm_arena = mem_arena_new(1024);
+    temp_arena = mem_arena_new();
+    perm_arena = mem_arena_new();
 
     Rest_Api *api = &(Rest_Api){0};
     rest_init(api, perm_arena, temp_arena, MEM_STRUCT(perm_arena, Db));

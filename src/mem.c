@@ -21,7 +21,8 @@ struct Mem_Page {
     void *mem;
 };
 
-Mem_Page *mem_page_new(size_t size) {
+Mem_Page *
+mem_page(size_t size) {
     Mem_Page *result = (Mem_Page *)malloc(sizeof(Mem_Page));
 
     result->size = size;
@@ -37,31 +38,33 @@ void mem_page_free(Mem_Page *page) {
     free(page);
 }
 
-enum { MIN_PAGE_SIZE = 1024 };
+enum { MIN_PAGE_SIZE = 2048 };
 typedef struct {
     Mem_Page *curr_page;
     size_t num_pages;
     Mem_Page **pages;
 } Mem_Arena;
 
-Mem_Arena *mem_arena_new() {
+Mem_Arena *
+mem_arena_new() {
     Mem_Arena *result = (Mem_Arena *)malloc(sizeof(Mem_Arena));
 
     result->num_pages = 1;
-    result->curr_page = (Mem_Page *)mem_page_new(MIN_PAGE_SIZE);
+    result->curr_page = (Mem_Page *)mem_page(MIN_PAGE_SIZE);
     result->pages     = &result->curr_page;
 
     return result;
 }
 
-void *mem_alloc(Mem_Arena *arena, size_t size) {
+void *
+mem_alloc(Mem_Arena *arena, size_t size) {
     Mem_Page *page = arena->curr_page;
 
     if ( (page->used + size) > page->size ) {
         if ( !page->next ) {
             arena->num_pages += 1;
-            size_t new_size = MAX(MIN_PAGE_SIZE, size);
-            page->next = mem_page_new(new_size);
+            size_t new_size = (MIN_PAGE_SIZE < size) ? size : MIN_PAGE_SIZE;
+            page->next = mem_page(new_size);
         }
 
         arena->curr_page = page->next;
@@ -74,8 +77,10 @@ void *mem_alloc(Mem_Arena *arena, size_t size) {
     return result;
 }
 
-void mem_reset(Mem_Arena *arena) {
+void
+mem_reset(Mem_Arena *arena) {
     Mem_Page *page = arena->curr_page;
+
     while ( page ) {
         page->used = 0;
         page = page->next;

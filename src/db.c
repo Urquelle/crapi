@@ -2,8 +2,9 @@
 
 enum {
     DB_INT,
-    DB_LONG,
-    DB_VARCHAR,
+    DB_STRING,
+    DB_DATE,
+    DB_DATETIME,
 };
 
 typedef struct {
@@ -157,9 +158,35 @@ db_params(size_t num_elems, Mem_Arena *arena) {
     return result;
 }
 
+uint32_t
+db_type(uint32_t type) {
+    switch ( type ) {
+        case DB_INT: {
+            return MYSQL_TYPE_LONG;
+        } break;
+
+        case DB_STRING: {
+            return MYSQL_TYPE_VAR_STRING;
+        } break;
+
+        case DB_DATE: {
+            return MYSQL_TYPE_DATE;
+        } break;
+
+        case DB_DATETIME: {
+            return MYSQL_TYPE_DATETIME;
+        } break;
+
+        default: {
+            assert(0);
+            return 0;
+        } break;
+    }
+}
+
 void
 db_param_set(Db_Param *params, size_t idx, int type, void *data) {
-    params->elems[idx].buffer_type = type;
+    params->elems[idx].buffer_type = db_type(type);
     params->elems[idx].buffer = (void *)data;
     params->elems[idx].is_null = 0;
     params->elems[idx].length = 0;
@@ -275,19 +302,28 @@ db_stmt_exec(Db_Stmt *stmt, Db_Param *params, Mem_Arena *arena) {
 }
 
 char *
-db_json(Db_Result *res, Mem_Arena *arena) {
-    char *result = "[";
-    for ( int i = 0; i < res->num_rows; ++i ) {
-        result = strf(arena, "%s%s{", result, (i == 0) ? "" : ", ");
-        Db_Row *row = res->rows[i];
+db_json_obj(Db_Row *row, Mem_Arena *arena) {
+    char *result = "{";
 
-        for ( int j = 0; j < row->num_fields; ++j ) {
-            Db_Field *field = row->fields[j];
-            result = strf(arena, "%s%s\"%s\": \"%s\"", result, (j == 0) ? "" : ", ", field->name, (char *)field->data);
-        }
-
-        result = strf(arena, "%s}", result);
+    for ( int j = 0; j < row->num_fields; ++j ) {
+        Db_Field *field = row->fields[j];
+        result = strf(arena, "%s%s\"%s\": \"%s\"", result, (j == 0) ? "" : ", ", field->name, (char *)field->data);
     }
+
+    result = strf(arena, "%s}", result);
+
+    return result;
+}
+
+char *
+db_json_array(Db_Result *res, Mem_Arena *arena) {
+    char *result = "[";
+
+    for ( int i = 0; i < res->num_rows; ++i ) {
+        result = strf(arena, "%s%s%s", result, (i == 0) ? "" : ", ",
+                db_json_obj(res->rows[i], arena));
+    }
+
     result = strf(arena, "%s]", result);
 
     return result;

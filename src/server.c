@@ -482,7 +482,8 @@ http_server_send_response(Http_Request *request, Http_Response *response,
 {
     size_t content_len = string_len( content );
 
-    response->header = strf(arena, "%s %d OK\nContent-length: %zd\nContent-type: %s\n\n",
+    response->header = strf(arena,
+            "%s %d OK\nContent-length: %zd\nAccess-Control-Allow-Origin: *\nContent-type: %s\n\n",
             request->header.http_version,
             response->code,
             content_len,

@@ -25,12 +25,12 @@ REST_CALLBACK(get_orga_structs) {
     assert(api->db);
 
     Db_Param params = db_params(1, temp_arena);
-    db_param_set(&params, 0, MYSQL_TYPE_LONG, &(int){ http_param_int(req, "id") });
+    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id") });
 
     Db_Stmt *stmt = db_stmt_get(api->db, "orga/structs");
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    res->content = db_json(&result, temp_arena);
+    res->content = db_json_array(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
@@ -40,7 +40,7 @@ REST_CALLBACK(get_orgas) {
     char *query = "SELECT * FROM orga";
     Db_Result result = db_query(api->db, query, temp_arena);
 
-    res->content = db_json(&result, temp_arena);
+    res->content = db_json_array(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
@@ -48,12 +48,12 @@ REST_CALLBACK(get_orga) {
     assert(api->db);
 
     Db_Param params = db_params(1, temp_arena);
-    db_param_set(&params, 0, MYSQL_TYPE_LONG, &(int){ http_param_int(req, "id") });
+    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id") });
 
     Db_Stmt *stmt = db_stmt_get(api->db, "orga");
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    res->content = db_json(&result, temp_arena);
+    res->content = db_json_obj(result.rows[0], temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
@@ -61,8 +61,8 @@ REST_CALLBACK(post_authenticate) {
     assert(api->db);
 
     Db_Param params = db_params(2, temp_arena);
-    db_param_set(&params, 0, MYSQL_TYPE_VAR_STRING, http_param(req, "username"));
-    db_param_set(&params, 1, MYSQL_TYPE_VAR_STRING, http_param(req, "password"));
+    db_param_set(&params, 0, DB_STRING, http_param(req, "username"));
+    db_param_set(&params, 1, DB_STRING, http_param(req, "password"));
 
     Db_Stmt *stmt = db_stmt_get(api->db, "auth/authenticate");
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);

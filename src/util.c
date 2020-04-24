@@ -28,28 +28,6 @@ typedef struct {
     };
 } Param_Pair;
 
-void *
-xmalloc(size_t size) {
-    void *result = malloc(size);
-
-    if ( !result ) {
-        assert(!"speicher konnte nicht reserviert werden");
-    }
-
-    return result;
-}
-
-void *
-xcalloc(size_t size, size_t num) {
-    void *result = calloc(size, num);
-
-    if ( !result ) {
-        assert(!"speicher konnte nicht reserviert werden");
-    }
-
-    return result;
-}
-
 static uint64_t
 util_bytes_hash(void *ptr, size_t len) {
     uint64_t x = 0xcbf29ce484222325;
@@ -73,29 +51,20 @@ uint64_t util_ptr_hash(void *ptr) {
     return x;
 }
 
-Map *map_create() {
-    Map *result = (Map *)xmalloc(sizeof(Map));
-
-    result->cap = 0;
-    result->len = 0;
-    result->keys = 0;
-    result->vals = 0;
-
-    return result;
-}
-
-void map_push(Map *map, void *key, void *val);
-void map_grow(Map *map) {
+void map_push(Map *map, void *key, void *val, Mem_Arena *arena);
+void map_grow(Map *map, Mem_Arena *arena) {
     size_t cap = ((map->cap * 2) < 16) ? 16 : map->cap * 2;
-    void *mem = xmalloc(map->cap);
+    void *mem = MEM_SIZE(arena, map->cap);
 
     Map new_map = {0};
-    new_map.keys = xcalloc(cap, sizeof(void *));
-    new_map.vals = xmalloc(cap*sizeof(void *));
+
+    new_map.keys = MEM_SIZE(arena, cap*sizeof(void *));
+    ZERO_ARRAY(cap, new_map.keys);
+    new_map.vals = MEM_SIZE(arena, cap*sizeof(void *));
 
     for ( uint32_t i = 0; i < map->cap; ++i ) {
         if ( map->keys[i] ) {
-            map_push(&new_map, map->keys[i], map->vals[i]);
+            map_push(&new_map, map->keys[i], map->vals[i], arena);
         }
     }
 
@@ -108,11 +77,11 @@ void map_grow(Map *map) {
     map->vals = new_map.vals;
 }
 
-void map_push(Map *map, void *key, void *val) {
+void map_push(Map *map, void *key, void *val, Mem_Arena *arena) {
     if ( !map ) return;
 
     if ( (map->cap / 2) < (map->len + 1) ) {
-        map_grow(map);
+        map_grow(map, arena);
     }
 
     size_t i = (size_t)util_ptr_hash(key);
@@ -224,7 +193,7 @@ struct Str_Intern {
 static Map global_str_interns;
 
 static char *
-str_intern_range(char *start, char *end) {
+str_intern_range(char *start, char *end, Mem_Arena *arena) {
     size_t len = end - start;
     uint64_t hash = util_bytes_hash(start, len);
     void *key = (void *)(uintptr_t)(hash ? hash : 1);
@@ -236,20 +205,20 @@ str_intern_range(char *start, char *end) {
         }
     }
 
-    Str_Intern *new_intern = (Str_Intern *)xmalloc(offsetof(Str_Intern, str) + len + 1);
+    Str_Intern *new_intern = (Str_Intern *)MEM_SIZE(arena, offsetof(Str_Intern, str) + len + 1);
 
     new_intern->length = len;
     new_intern->next   = intern;
     memcpy(new_intern->str, start, len);
     new_intern->str[len] = 0;
-    map_push(&global_str_interns, key, new_intern);
+    map_push(&global_str_interns, key, new_intern, arena);
 
     return new_intern->str;
 }
 
 static char *
-str_intern(char *str) {
-    return str_intern_range(str, str + string_len(str));
+str_intern(char *str, Mem_Arena *arena) {
+    return str_intern_range(str, str + string_len(str), arena);
 }
 
 char *

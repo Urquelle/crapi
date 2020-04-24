@@ -134,7 +134,7 @@ void rest_parse_params(Rest_Route *route, Http_Request *req, Mem_Arena *arena) {
             char *val = (char *)MEM_SIZE(arena, val_len + 1);
             string_copy(val_ptr, val, val_len);
 
-            map_push(&req->params, str_intern(key), val);
+            map_push(&req->params, str_intern(key, arena), val, arena);
         }
 
         if ( pattern[0] ) {

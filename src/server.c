@@ -423,18 +423,18 @@ http_request_parse( Http_Request *request, char *content, Mem_Arena *arena ) {
         } else {
             parse_post_data_key_value( &c, key, value );
 
-            Param_Pair *param = (Param_Pair *)xmalloc(sizeof(Param_Pair));
+            Param_Pair *param = MEM_STRUCT(arena, Param_Pair);
             param->type = Param_Type_Char;
 
             size_t key_length = strlen( key );
-            param->key = (char *)xmalloc(sizeof( char ) * key_length + 1);
+            param->key = MEM_SIZE(arena, sizeof( char ) * key_length + 1);
             string_copy( key, param->key, string_len(key) );
 
             size_t value_length = strlen( value );
-            param->char_value = (char *)xmalloc(sizeof( char ) * value_length + 1);
+            param->char_value = MEM_SIZE(arena, sizeof( char ) * value_length + 1);
             string_copy( value, param->char_value, string_len(value) );
 
-            map_push( &request->params, str_intern(key), param );
+            map_push( &request->params, str_intern(key, arena), param, arena );
         }
     }
 }
@@ -499,15 +499,15 @@ http_server_send_response(Http_Request *request, Http_Response *response,
 }
 
 char *
-http_param(Http_Request *req, char *key) {
-    char *result = (char *)map_get(&req->params, str_intern(key));
+http_param(Http_Request *req, char *key, Mem_Arena *arena) {
+    char *result = (char *)map_get(&req->params, str_intern(key, arena));
 
     return result;
 }
 
 int
-http_param_int(Http_Request *req, char *key) {
-    char *value = http_param(req, key);
+http_param_int(Http_Request *req, char *key, Mem_Arena *arena) {
+    char *value = http_param(req, key, arena);
     int result = 0;
 
     if ( value ) {

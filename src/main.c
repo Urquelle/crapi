@@ -25,9 +25,9 @@ REST_CALLBACK(get_orga_structs) {
     assert(api->db);
 
     Db_Param params = db_params(1, temp_arena);
-    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id") });
+    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id", temp_arena) });
 
-    Db_Stmt *stmt = db_stmt_get(api->db, "orga/structs");
+    Db_Stmt *stmt = db_stmt_get(api->db, "orga/structs", temp_arena);
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
     res->content = db_json_array(&result, temp_arena);
@@ -48,23 +48,25 @@ REST_CALLBACK(get_orga) {
     assert(api->db);
 
     Db_Param params = db_params(1, temp_arena);
-    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id") });
+    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id", temp_arena) });
 
-    Db_Stmt *stmt = db_stmt_get(api->db, "orga");
+    Db_Stmt *stmt = db_stmt_get(api->db, "orga", temp_arena);
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    res->content = db_json_obj(result.rows[0], temp_arena);
-    res->mime_type = MIME_APPLICATION_JSON;
+    if ( result.success ) {
+        res->content = db_json_obj(result.rows[0], temp_arena);
+        res->mime_type = MIME_APPLICATION_JSON;
+    }
 }
 
 REST_CALLBACK(post_authenticate) {
     assert(api->db);
 
     Db_Param params = db_params(2, temp_arena);
-    db_param_set(&params, 0, DB_STRING, http_param(req, "username"));
-    db_param_set(&params, 1, DB_STRING, http_param(req, "password"));
+    db_param_set(&params, 0, DB_STRING, http_param(req, "username", temp_arena));
+    db_param_set(&params, 1, DB_STRING, http_param(req, "password", temp_arena));
 
-    Db_Stmt *stmt = db_stmt_get(api->db, "auth/authenticate");
+    Db_Stmt *stmt = db_stmt_get(api->db, "auth/authenticate", temp_arena);
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
     if ( result.num_rows > 0 ) {

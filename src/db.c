@@ -201,14 +201,14 @@ db_stmt_create(Db *db, char *key, char *query, Mem_Arena *arena) {
     }
 
     Db_Stmt *result = db_stmt_new(stmt, arena);
-    map_push(&db->stmts, str_intern(key), result);
+    map_push(&db->stmts, str_intern(key, arena), result, arena);
 
     return true;
 }
 
 Db_Stmt *
-db_stmt_get(Db *db, char *key) {
-    Db_Stmt *result = map_get(&db->stmts, str_intern(key));
+db_stmt_get(Db *db, char *key, Mem_Arena *arena) {
+    Db_Stmt *result = map_get(&db->stmts, str_intern(key, arena));
 
     return result;
 }

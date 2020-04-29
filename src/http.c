@@ -423,15 +423,15 @@ http_request_parse( Http_Request *request, char *content, Mem_Arena *arena ) {
         } else {
             parse_post_data_key_value( &c, key, value );
 
-            Param_Pair *param = MEM_STRUCT(arena, Param_Pair);
+            Param_Pair *param = ALLOC_STRUCT(arena, Param_Pair);
             param->type = Param_Type_Char;
 
             size_t key_length = strlen( key );
-            param->key = MEM_SIZE(arena, sizeof( char ) * key_length + 1);
+            param->key = ALLOC_SIZE(arena, sizeof( char ) * key_length + 1);
             string_copy( key, param->key, string_len(key) );
 
             size_t value_length = strlen( value );
-            param->char_value = MEM_SIZE(arena, sizeof( char ) * value_length + 1);
+            param->char_value = ALLOC_SIZE(arena, sizeof( char ) * value_length + 1);
             string_copy( value, param->char_value, string_len(value) );
 
             map_push( &request->params, str_intern(key, arena), param, arena );
@@ -480,20 +480,20 @@ bool
 http_server_send_response(Http_Request *request, Http_Response *response,
         char *content, Mem_Arena *arena)
 {
-    size_t content_len = string_len( content );
+    size_t content_size = string_size( content );
 
     response->header = strf(arena,
             "%s %d OK\nContent-length: %zd\nAccess-Control-Allow-Origin: *\nContent-type: %s\n\n",
             request->header.http_version,
             response->code,
-            content_len,
+            content_size,
             mime_type[response->mime_type]);
 
-    size_t response_len = string_len(response->header) + content_len + 1;
-    char *response_content = (char *)MEM_SIZE(arena, response_len);
+    size_t response_size = string_size(response->header) + content_size + 1;
+    char *response_content = (char *)ALLOC_SIZE(arena, response_size);
     string_concat(response->header, content, response_content);
 
-    bool result = server_send_tcp_response(request->client_socket, response_content, (int)response_len);
+    bool result = server_send_tcp_response(request->client_socket, response_content, (int)response_size);
 
     return result;
 }

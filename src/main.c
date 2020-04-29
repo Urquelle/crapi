@@ -11,9 +11,11 @@
 
 #include "common.c"
 #include "mem.c"
+#include "utf8.c"
 #include "util.c"
 #include "db.c"
-#include "server.c"
+#include "json.c"
+#include "http.c"
 #include "rest.c"
 
 #include ".credentials.ini"
@@ -30,7 +32,7 @@ REST_CALLBACK(get_orga_structs) {
     Db_Stmt *stmt = db_stmt_get(api->db, "orga/structs", temp_arena);
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    res->content = db_json_array(&result, temp_arena);
+    res->content = json_array(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
@@ -40,7 +42,7 @@ REST_CALLBACK(get_orgas) {
     char *query = "SELECT * FROM orga";
     Db_Result result = db_query(api->db, query, temp_arena);
 
-    res->content = db_json_array(&result, temp_arena);
+    res->content = json_array(&result, temp_arena);
     res->mime_type = MIME_APPLICATION_JSON;
 }
 
@@ -48,14 +50,18 @@ REST_CALLBACK(get_orga) {
     assert(api->db);
 
     Db_Param params = db_params(1, temp_arena);
-    db_param_set(&params, 0, DB_INT, &(int){ http_param_int(req, "id", temp_arena) });
+    int id = http_param_int(req, "id", temp_arena);
+    db_param_set(&params, 0, DB_INT, &(int){ id });
 
     Db_Stmt *stmt = db_stmt_get(api->db, "orga", temp_arena);
     Db_Result result = db_stmt_exec(stmt, &params, temp_arena);
 
-    if ( result.success ) {
-        res->content = db_json_obj(result.rows[0], temp_arena);
+    if ( result.success && result.num_rows > 0 ) {
+        res->content = json_obj(result.rows[0], temp_arena);
         res->mime_type = MIME_APPLICATION_JSON;
+    } else {
+        res->content = strf(temp_arena, "Keine Orga zu id = %d gefunden", id);
+        res->code = Response_Not_Found;
     }
 }
 
@@ -103,7 +109,7 @@ int main(int argc, char **argv) {
     perm_arena = mem_arena_new();
 
     Rest_Api *api = &(Rest_Api){0};
-    rest_init(api, perm_arena, temp_arena, MEM_STRUCT(perm_arena, Db));
+    rest_init(api, perm_arena, temp_arena, ALLOC_STRUCT(perm_arena, Db));
     db_init(api->db, NULL, DB_USER, DB_PASSWD, DB_NAME);
 
     db_stmt_create(api->db, "orga", "SELECT * FROM orga WHERE id = ?", perm_arena);

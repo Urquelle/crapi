@@ -41,15 +41,15 @@ typedef struct {
 
 Db_Field *
 db_field(char *name, size_t size, uint32_t type, void *data, Mem_Arena *arena) {
-    Db_Field *result = MEM_STRUCT(arena, Db_Field);
+    Db_Field *result = ALLOC_STRUCT(arena, Db_Field);
 
     result->name = name;
     result->size = size;
     result->type = type;
 
     result->data = ( type == MYSQL_TYPE_VAR_STRING || type == MYSQL_TYPE_DATETIME )
-        ? MEM_SIZE(arena, size+1)
-        : MEM_SIZE(arena, size);
+        ? ALLOC_SIZE(arena, size+1)
+        : ALLOC_SIZE(arena, size);
 
     memcpy(result->data, data, size);
 
@@ -62,16 +62,16 @@ db_field(char *name, size_t size, uint32_t type, void *data, Mem_Arena *arena) {
 
 Db_Stmt *
 db_stmt_new(void *stmt, Mem_Arena *arena) {
-    Db_Stmt *result = MEM_STRUCT(arena, Db_Stmt);
+    Db_Stmt *result = ALLOC_STRUCT(arena, Db_Stmt);
 
     result->stmt = stmt;
 
     return result;
 }
 
-unsigned long
-db_len(uint32_t type, unsigned long len, void *data) {
-    unsigned long result = len;
+size_t
+db_len(uint32_t type, size_t len, void *data) {
+    size_t result = len;
 
     switch ( type ) {
         case MYSQL_TYPE_DATETIME:
@@ -107,7 +107,7 @@ Db_Result
 db_query(Db *db, char *query, Mem_Arena *arena) {
     Db_Result result = {0};
 
-    if ( mysql_real_query(db->handle, query, string_len(query)) ) {
+    if ( mysql_real_query(db->handle, query, (unsigned long)string_len(query)) ) {
         return result;
     }
 
@@ -116,15 +116,15 @@ db_query(Db *db, char *query, Mem_Arena *arena) {
         uint64_t num_fields = mysql_num_fields(mysql_result);
         uint64_t num_rows = mysql_num_rows(mysql_result);
 
-        result.rows = (Db_Row **)MEM_SIZE(arena, sizeof(Db_Row *)*num_rows);
+        result.rows = (Db_Row **)ALLOC_SIZE(arena, sizeof(Db_Row *)*num_rows);
         result.num_rows = num_rows;
 
         MYSQL_ROW mysql_row;
         uint64_t row_idx = 0;
         while ( (mysql_row = mysql_fetch_row(mysql_result)) ) {
-            Db_Row *row = MEM_STRUCT(arena, Db_Row);
+            Db_Row *row = ALLOC_STRUCT(arena, Db_Row);
 
-            row->fields = (Db_Field **)MEM_SIZE(arena, sizeof(Db_Field *)*num_fields);
+            row->fields = (Db_Field **)ALLOC_SIZE(arena, sizeof(Db_Field *)*num_fields);
             row->num_fields = num_fields;
 
             for ( uint32_t i = 0; i < num_fields; ++i ) {
@@ -138,11 +138,15 @@ db_query(Db *db, char *query, Mem_Arena *arena) {
     } else {
         if ( mysql_errno(db->handle) ) {
            fprintf(stderr, "Db Fehler: %s\n", mysql_error(db->handle));
+
+           return result;
         } else if ( mysql_field_count(db->handle) == 0 ) {
             // falls es kein select war
             uint64_t num_rows = mysql_affected_rows(db->handle);
         }
     }
+
+    result.success = true;
 
     return result;
 }
@@ -151,7 +155,7 @@ Db_Param
 db_params(size_t num_elems, Mem_Arena *arena) {
     Db_Param result = {0};
 
-    result.elems = (MYSQL_BIND *)MEM_SIZE(arena, sizeof(MYSQL_BIND)*num_elems);
+    result.elems = (MYSQL_BIND *)ALLOC_SIZE(arena, sizeof(MYSQL_BIND)*num_elems);
     ZERO_ARRAY(num_elems, result.elems);
     result.num_elems = num_elems;
 
@@ -196,7 +200,7 @@ bool
 db_stmt_create(Db *db, char *key, char *query, Mem_Arena *arena) {
     MYSQL_STMT *stmt = mysql_stmt_init(db->handle);
 
-    if ( mysql_stmt_prepare(stmt, query, string_len(query)) ) {
+    if ( mysql_stmt_prepare(stmt, query, (unsigned long)string_len(query)) ) {
         return false;
     }
 
@@ -255,11 +259,11 @@ db_stmt_exec(Db_Stmt *stmt, Db_Param *params, Mem_Arena *arena) {
     MYSQL_RES *mysql_result = mysql_stmt_result_metadata(stmt->stmt);
 
     uint64_t num_fields = mysql_num_fields(mysql_result);
-    MYSQL_FIELD **fields = (MYSQL_FIELD **)MEM_SIZE(arena, sizeof(MYSQL_FIELD *)*num_fields);
-    unsigned long len = 0;
+    MYSQL_FIELD **fields = (MYSQL_FIELD **)ALLOC_SIZE(arena, sizeof(MYSQL_FIELD *)*num_fields);
+    size_t len = 0;
 
     if ( mysql_result ) {
-        bind = (MYSQL_BIND *)MEM_SIZE(arena, num_fields*sizeof(MYSQL_BIND));
+        bind = (MYSQL_BIND *)ALLOC_SIZE(arena, num_fields*sizeof(MYSQL_BIND));
         ZERO_ARRAY(num_fields, bind);
 
         for ( uint32_t i = 0; i < num_fields; ++i ) {
@@ -268,8 +272,8 @@ db_stmt_exec(Db_Stmt *stmt, Db_Param *params, Mem_Arena *arena) {
 
             bind[i].buffer_type = field->type;
             bind[i].buffer_length = field->length;
-            bind[i].buffer = MEM_SIZE(arena, field->length);
-            bind[i].length = &len;
+            bind[i].buffer = ALLOC_SIZE(arena, field->length);
+            bind[i].length = &((unsigned long)len);
         }
     }
 
@@ -277,13 +281,13 @@ db_stmt_exec(Db_Stmt *stmt, Db_Param *params, Mem_Arena *arena) {
     mysql_stmt_store_result(stmt->stmt);
 
     uint64_t num_rows = mysql_stmt_num_rows(stmt->stmt);
-    result.rows = (Db_Row **)MEM_SIZE(arena, sizeof(Db_Row *)*num_rows);
+    result.rows = (Db_Row **)ALLOC_SIZE(arena, sizeof(Db_Row *)*num_rows);
     result.num_rows = num_rows;
 
     uint64_t row_idx = 0;
     while ( !mysql_stmt_fetch(stmt->stmt) ) {
-        Db_Row *row = MEM_STRUCT(arena, Db_Row);
-        row->fields = (Db_Field **)MEM_SIZE(arena, sizeof(Db_Field *)*num_fields);
+        Db_Row *row = ALLOC_STRUCT(arena, Db_Row);
+        row->fields = (Db_Field **)ALLOC_SIZE(arena, sizeof(Db_Field *)*num_fields);
         row->num_fields = num_fields;
 
         for ( uint32_t i = 0; i < num_fields; ++i ) {
@@ -298,33 +302,8 @@ db_stmt_exec(Db_Stmt *stmt, Db_Param *params, Mem_Arena *arena) {
         result.rows[row_idx] = row;
     }
 
-    return result;
-}
-
-char *
-db_json_obj(Db_Row *row, Mem_Arena *arena) {
-    char *result = "{";
-
-    for ( int j = 0; j < row->num_fields; ++j ) {
-        Db_Field *field = row->fields[j];
-        result = strf(arena, "%s%s\"%s\": \"%s\"", result, (j == 0) ? "" : ", ", field->name, (char *)field->data);
-    }
-
-    result = strf(arena, "%s}", result);
+    result.success = true;
 
     return result;
 }
 
-char *
-db_json_array(Db_Result *res, Mem_Arena *arena) {
-    char *result = "[";
-
-    for ( int i = 0; i < res->num_rows; ++i ) {
-        result = strf(arena, "%s%s%s", result, (i == 0) ? "" : ", ",
-                db_json_obj(res->rows[i], arena));
-    }
-
-    result = strf(arena, "%s]", result);
-
-    return result;
-}

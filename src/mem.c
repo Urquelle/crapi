@@ -1,5 +1,5 @@
-#define MEM_SIZE(Arena, Size) mem_alloc(Arena, Size)
-#define MEM_STRUCT(Arena, Struct) (Struct *)mem_alloc(Arena, sizeof(Struct))
+#define ALLOC_SIZE(Arena, Size) mem_alloc(Arena, Size)
+#define ALLOC_STRUCT(Arena, Struct) (Struct *)mem_alloc(Arena, sizeof(Struct))
 
 #define ZERO_STRUCT(inst) zero_size(sizeof(inst), &(inst))
 #define ZERO_ARRAY(count, pointer) zero_size(count*sizeof((pointer)[0]), pointer)

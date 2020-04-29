@@ -54,13 +54,13 @@ uint64_t util_ptr_hash(void *ptr) {
 void map_push(Map *map, void *key, void *val, Mem_Arena *arena);
 void map_grow(Map *map, Mem_Arena *arena) {
     size_t cap = ((map->cap * 2) < 16) ? 16 : map->cap * 2;
-    void *mem = MEM_SIZE(arena, map->cap);
+    void *mem = ALLOC_SIZE(arena, map->cap);
 
     Map new_map = {0};
 
-    new_map.keys = MEM_SIZE(arena, cap*sizeof(void *));
+    new_map.keys = ALLOC_SIZE(arena, cap*sizeof(void *));
     ZERO_ARRAY(cap, new_map.keys);
-    new_map.vals = MEM_SIZE(arena, cap*sizeof(void *));
+    new_map.vals = ALLOC_SIZE(arena, cap*sizeof(void *));
 
     for ( uint32_t i = 0; i < map->cap; ++i ) {
         if ( map->keys[i] ) {
@@ -123,45 +123,39 @@ void *map_get(Map *map, void *key) {
     return NULL;
 }
 
-inline bool
-is_equal(char *a, char *b, size_t len) {
-    bool result = strncmp(a, b, len) == 0;
+size_t
+string_size( char *str ) {
+    size_t result = utf8_str_size(str);
 
     return result;
 }
 
-uint32_t
+size_t
 string_len( char *str ) {
-    uint32_t result = 0;
-
-    if ( !str ) return result;
-
-    while ( *str ) {
-        result++;
-        str++;
-    }
+    size_t result = utf8_str_len(str);
 
     return result;
 }
 
 void
 string_concat( char *first, char *second, char *dest ) {
-    uint32_t dest_pos   = 0;
-    uint32_t first_len  = string_len(first);
-    uint32_t second_len = string_len(second);
+    size_t first_size = string_size(first);
+    size_t second_size = string_size(second);
 
-    for ( uint32_t i = 0; i < first_len; ++dest_pos, ++i ) {
+    uint32_t dest_pos = 0;
+
+    for ( size_t i = 0; i < first_size; ++dest_pos, ++i ) {
         dest[dest_pos] = first[i];
     }
 
-    for ( uint32_t i = 0; i < second_len; ++dest_pos, ++i ) {
+    for ( size_t i = 0; i < second_size; ++dest_pos, ++i ) {
         dest[dest_pos] = second[i];
     }
 }
 
 void
 string_copy( char *source, char *dest, uint64_t len ) {
-    uint32_t source_len = string_len( source );
+    size_t source_len = string_len( source );
 
     for ( uint32_t i = 0; i < len; ++i ) {
         dest[i] = source[i];
@@ -183,11 +177,18 @@ string_to_int(char *str) {
     return result;
 }
 
+inline bool
+is_equal(char *a, char *b, size_t len) {
+    bool result = strncmp(a, b, len) == 0;
+
+    return result;
+}
+
 typedef struct Str_Intern Str_Intern;
 struct Str_Intern {
-    size_t   length;
-    Str_Intern*  next;
-    char     str[1];
+    size_t length;
+    Str_Intern * next;
+    char str[1];
 };
 
 static Map global_str_interns;
@@ -205,7 +206,7 @@ str_intern_range(char *start, char *end, Mem_Arena *arena) {
         }
     }
 
-    Str_Intern *new_intern = (Str_Intern *)MEM_SIZE(arena, offsetof(Str_Intern, str) + len + 1);
+    Str_Intern *new_intern = (Str_Intern *)ALLOC_SIZE(arena, offsetof(Str_Intern, str) + len + 1);
 
     new_intern->length = len;
     new_intern->next   = intern;
@@ -228,7 +229,7 @@ strf(Mem_Arena *arena, char *fmt, ...) {
     int size = 1 + vsnprintf(NULL, 0, fmt, args);
     va_end(args);
 
-    char *str = MEM_SIZE(arena, size);
+    char *str = ALLOC_SIZE(arena, size);
 
     va_start(args, fmt);
     vsnprintf(str, size, fmt, args);

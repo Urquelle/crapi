@@ -10,7 +10,7 @@ typedef struct {
 
 Rest_Route *
 rest_route(uint32_t method, char *pattern, Rest_Callback func, Mem_Arena *arena) {
-    Rest_Route *result = MEM_STRUCT(arena, Rest_Route);
+    Rest_Route *result = ALLOC_STRUCT(arena, Rest_Route);
 
     result->method = method;
     result->pattern = pattern;
@@ -128,10 +128,10 @@ void rest_parse_params(Rest_Route *route, Http_Request *req, Mem_Arena *arena) {
 
             size_t val_len = url - val_ptr;
 
-            char *key = (char *)MEM_SIZE(arena, key_len + 1);
+            char *key = (char *)ALLOC_SIZE(arena, key_len + 1);
             string_copy(key_ptr, key, key_len);
 
-            char *val = (char *)MEM_SIZE(arena, val_len + 1);
+            char *val = (char *)ALLOC_SIZE(arena, val_len + 1);
             string_copy(val_ptr, val, val_len);
 
             map_push(&req->params, str_intern(key, arena), val, arena);
@@ -172,7 +172,7 @@ void rest_post(Rest_Api *api, char *pattern, Rest_Callback *func) {
 }
 
 void rest_start(Rest_Api *api, char *ip, uint16_t port) {
-    api->server = MEM_STRUCT(api->perm_arena, Server);
+    api->server = ALLOC_STRUCT(api->perm_arena, Server);
     server_init(api->server, SERVER_TCP);
 
     Server_Response result = server_start(api->server, ip, port);
